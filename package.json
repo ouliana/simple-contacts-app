@@ -1,5 +1,5 @@
 {
-  "name": "phonebook-backend",
+  "name": "simple-contacts-app",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -7,19 +7,19 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build:ui": "rm -rf build && cd ../phonebook-frontend && npm run build && cp -r build ../phonebook",
+    "build:ui": "rm -rf build && cd ../simple-contacts-app-frontend && npm run build && cp -r build ../simple-contacts-app",
     "deploy:full": "npm run build:ui && git add . && git commit -m uibuild && git push"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ouliana/phonebook-backend.git"
+    "url": "git+https://github.com/ouliana/simple-contacts-app.git"
   },
   "author": "Ouliana Kotik",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/ouliana/phonebook-backend/issues"
+    "url": "https://github.com/ouliana/simple-contacts-app/issues"
   },
-  "homepage": "https://github.com/ouliana/phonebook-backend#readme",
+  "homepage": "https://github.com/ouliana/simple-contacts-app#readme",
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.18.2",
