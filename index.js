@@ -1,8 +1,9 @@
-require('dotenv').config();
+//require('dotenv').config();
 const express = require('express');
 const morgan = require('morgan');
 const cors = require('cors');
-const nano = require('nano')(process.env.COUCHDB_URL);
+const initCouch = require('./modules/couch/init_couch');
+const persons = require('./service/db/persons');
 
 const app = express();
 
@@ -27,7 +28,11 @@ app.use(
 );
 
 app.use(cors());
-const persons = nano.use('persons');
+//const persons = nano.use('persons');
+initCouch(err => {
+  if (err) throw err;
+  else console.log('CouchDB initialized');
+});
 
 const PORT = process.env.PORT;
 
@@ -42,43 +47,17 @@ app.get('/info', (request, response) => {
   response.send(info);
 });
 
-app.get('/api/persons', async (req, res) => {
-  try {
-    const body = await persons.view('person', 'all', { include_docs: true });
-
-    res.send(
-      body.rows.map(row => ({
-        name: row.doc.name,
-        number: row.doc.number,
-        id: row.id,
-      }))
-    );
-  } catch (err) {
-    console.log(err.reason);
-  }
+app.get('/api/persons', async (req, res, next) => {
+  persons.getAll(req, res, next);
 });
 
 app.get('/api/persons/:id', async (req, res, next) => {
-  try {
-    const doc = await persons.get(req.params.id);
-    res.send({ name: doc.name, number: doc.number, id: doc._id });
-  } catch (err) {
-    next(err);
-  }
+  persons.getById(req, res, next);
 });
 
 app.delete('/api/persons/:id', async (req, res, next) => {
-  console.log('api.delete runs...');
-  console.log(console.log(req.params.id));
-
-  try {
-    const doc = await persons.get(req.params.id);
-    console.log(doc._id, doc._rev);
-    const response = await persons.destroy(doc._id, doc._rev);
-    res.status(204).end();
-  } catch (err) {
-    next(err);
-  }
+  console.log(persons);
+  persons.destroy(req, res, next);
 });
 
 app.post('/api/persons', async (req, res, next) => {
@@ -87,42 +66,16 @@ app.post('/api/persons', async (req, res, next) => {
   if (!(body.name && body.number)) {
     res.status(400).send(error);
   } else {
-    console.log('POST');
-    try {
-      const response = await persons.insert({
-        name: body.name,
-        number: body.number,
-      });
-      console.log(`id`, response.id);
-      const doc = await persons.get(response.id);
-      res.send({
-        name: doc.name,
-        number: doc.number,
-        id: response.id,
-      });
-    } catch (err) {
-      next(err);
-    }
+    const newPerson = {
+      name: body.name,
+      number: body.number,
+    };
+    persons.create(newPerson, req, res, next);
   }
 });
 
 app.put('/api/persons/:id', async (req, res, next) => {
-  const body = req.body;
-
-  try {
-    let doc = await persons.get(req.params.id);
-    const response = await persons.insert({
-      _id: doc._id,
-      _rev: doc._rev,
-      name: body.name,
-      number: body.number,
-    });
-
-    doc = await persons.get(req.params.id);
-    res.send(doc);
-  } catch (err) {
-    next(err);
-  }
+  persons.update(req, res, next);
 });
 
 const unknownEndpoint = (request, response) => {
