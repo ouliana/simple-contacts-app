@@ -1,8 +1,12 @@
+require('dotenv').config();
 const express = require('express');
 const morgan = require('morgan');
 const cors = require('cors');
+const nano = require('nano')(process.env.COUCHDB_URL);
 
 const app = express();
+
+app.use(express.static('build'));
 app.use(express.json());
 
 app.use(
@@ -23,107 +27,119 @@ app.use(
 );
 
 app.use(cors());
-app.use(express.static('build'));
+const persons = nano.use('persons');
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT;
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
-let persons = [
-  {
-    id: 1,
-    name: 'Arto Hellas',
-    number: '040-123456',
-  },
-  {
-    id: 2,
-    name: 'Ada Lovelace',
-    number: '39-44-5323523',
-  },
-  {
-    id: 3,
-    name: 'Dan Abramov',
-    number: '12-43-234345',
-  },
-  {
-    id: 4,
-    name: 'Mary Poppendieck',
-    number: '39-23-6423122',
-  },
-];
-
 app.get('/info', (request, response) => {
-  const info = `Phonebook has info for ${
+  const info = `Contact app has info for ${
     persons.length
   } people<br>${new Date()}`;
   response.send(info);
 });
 
-app.get('/api/persons', (request, response) => {
-  response.json(persons);
-});
+app.get('/api/persons', async (req, res) => {
+  try {
+    const body = await persons.view('person', 'all', { include_docs: true });
 
-app.get('/api/persons/:id', (request, response) => {
-  const id = Number(request.params.id);
-
-  const person = persons.find(p => p.id === id);
-
-  console.log(person);
-
-  if (person) {
-    response.json(person);
-  } else {
-    response.status(404).end();
+    res.send(
+      body.rows.map(row => ({
+        name: row.doc.name,
+        number: row.doc.number,
+        id: row.id,
+      }))
+    );
+  } catch (err) {
+    console.log(err.reason);
   }
 });
 
-app.delete('/api/persons/:id', (request, response) => {
-  const id = Number(request.params.id);
-  persons = persons.filter(p => p.id !== id);
-
-  response.status(204).end();
+app.get('/api/persons/:id', async (req, res, next) => {
+  try {
+    const doc = await persons.get(req.params.id);
+    res.send({ name: doc.name, number: doc.number, id: doc._id });
+  } catch (err) {
+    next(err);
+  }
 });
 
-const generateId = () => {
-  let min = 100;
-  let max = 1000;
-  let id = Math.floor(Math.random() * (max - min)) + min;
-  while (persons.find(p => p.id === id)) {
-    id = Math.floor(Math.random() * (max - min)) + min;
+app.delete('/api/persons/:id', async (req, res, next) => {
+  console.log('api.delete runs...');
+  console.log(console.log(req.params.id));
+
+  try {
+    const doc = await persons.get(req.params.id);
+    console.log(doc._id, doc._rev);
+    const response = await persons.destroy(doc._id, doc._rev);
+    res.status(204).end();
+  } catch (err) {
+    next(err);
   }
-  return id;
-};
+});
 
-const handleError = ({ name, number }) => {
-  if (!name) return { error: 'no name received' };
-  if (!number) return { error: 'no number received' };
-  if (persons.find(p => p.name === name))
-    return {
-      error: 'name must be unique',
-    };
-  return null;
-};
+app.post('/api/persons', async (req, res, next) => {
+  const body = req.body;
 
-app.post('/api/persons', (request, response) => {
-  const body = request.body;
-
-  let error = handleError(body);
-
-  if (error) {
-    response.status(400).send(error);
+  if (!(body.name && body.number)) {
+    res.status(400).send(error);
   } else {
-    const id = generateId();
+    console.log('POST');
+    try {
+      const response = await persons.insert({
+        name: body.name,
+        number: body.number,
+      });
+      console.log(`id`, response.id);
+      const doc = await persons.get(response.id);
+      res.send({
+        name: doc.name,
+        number: doc.number,
+        id: response.id,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+});
 
-    const person = {
-      id: id,
+app.put('/api/persons/:id', async (req, res, next) => {
+  const body = req.body;
+
+  try {
+    let doc = await persons.get(req.params.id);
+    const response = await persons.insert({
+      _id: doc._id,
+      _rev: doc._rev,
       name: body.name,
       number: body.number,
-    };
+    });
 
-    persons = persons.concat(person);
-
-    response.json(person);
+    doc = await persons.get(req.params.id);
+    res.send(doc);
+  } catch (err) {
+    next(err);
   }
 });
+
+const unknownEndpoint = (request, response) => {
+  response.status(404).send({ error: 'unknown endpoint' });
+};
+
+// handler of requests with unknown endpoint
+app.use(unknownEndpoint);
+
+const errorHandler = (error, req, res, next) => {
+  console.error(error.message);
+  if (error.reason === 'missing') {
+    return res.status(404).send({ error: `${error.reason}` });
+  }
+
+  next(error);
+};
+
+// handler of requests with result to errors
+app.use(errorHandler);
